@@ -1,0 +1,70 @@
+.add-stock-container {
+    padding: 30px;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: var(--shadow-md);
+}
+.add-stock-container h3 {
+    text-align: center;
+    font-size: 1.5rem;
+    color: var(--text-primary);
+    margin-top: 0;
+    margin-bottom: 25px;
+}
+.stock-entry-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+/* Nuevo estilo para el grupo de etiqueta + input */
+.stock-entry-form .input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.stock-entry-form .input-group label {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.full-width-button {
+    grid-column: 1 / -1;
+    padding: 12px;
+    font-size: 1.1rem;
+}
+
+/* Modal de Distribución (sin cambios, pero se incluye para integridad) */
+.size-distribution-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+.distribution-summary {
+    background-color: #f3f4f6;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+}
+.distribution-summary p {
+    margin: 5px 0;
+}
+.distribution-summary .error {
+    color: #ef4444;
+}
+.distribution-summary .success {
+    color: #22c55e;
+}
+.distribution-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 15px;
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 10px;
+}
+.distribution-grid .input-group label {
+    font-weight: 600;
+}

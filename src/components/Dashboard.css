@@ -1,0 +1,74 @@
+.dashboard .dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+.dashboard h3 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.5rem;
+    color: var(--text-primary);
+    margin: 0;
+}
+.filter-controls {
+    display: flex;
+    gap: 15px;
+}
+.filter-controls select {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background-color: white;
+}
+.deep-analysis-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 15px;
+    background-color: var(--primary-accent);
+    color: white;
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: 600;
+    transition: background-color 0.2s;
+}
+.deep-analysis-button:hover {
+    background-color: var(--primary-accent-hover);
+}
+.sales-history-table {
+    background-color: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+}
+.sales-history-table h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.sales-history-table table {
+    width: 100%;
+}
+.sales-history-table .item-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.sales-history-table .item-list li {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+.sales-history-table .total-cell {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.loading-cell, .no-data-cell {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary);
+    font-style: italic;
+}

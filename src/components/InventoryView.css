@@ -1,0 +1,115 @@
+.inventory-view h3 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.5rem;
+    color: var(--text-primary);
+    margin-bottom: 20px;
+}
+
+.filter-panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 15px;
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-sm);
+}
+
+.summary-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.summary-card {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    background-color: var(--background-dark);
+    color: white;
+    padding: 20px;
+    border-radius: 8px;
+}
+
+.summary-card svg {
+    font-size: 2rem;
+    color: var(--primary-accent);
+}
+
+.summary-card div {
+    display: flex;
+    flex-direction: column;
+}
+
+.summary-card span {
+    font-size: 0.9rem;
+    color: #9CA3AF;
+}
+
+.summary-card strong {
+    font-size: 1.75rem;
+    font-weight: 700;
+}
+
+.inventory-table-container {
+    overflow-x: auto;
+}
+
+.inventory-table-container table {
+    width: 100%;
+    min-width: 800px; /* Evita que la tabla se comprima demasiado */
+}
+
+.actions-cell {
+    display: flex;
+    gap: 10px;
+}
+
+.action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 5px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.action-btn.edit {
+    color: #3B82F6; /* Azul */
+}
+
+.action-btn.edit:hover {
+    background-color: #DBEAFE;
+}
+
+.action-btn.delete {
+    color: #EF4444; /* Rojo */
+}
+
+.action-btn.delete:hover {
+    background-color: #FEE2E2;
+}
+
+.edit-modal-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.edit-modal-content .input-group label {
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.edit-modal-content .primary-button {
+    width: 100%;
+    padding: 12px;
+}

@@ -1,0 +1,60 @@
+.ticket-modal-content {
+    text-align: center;
+}
+.ticket-modal-content h4 {
+    margin-top: 0;
+    font-size: 1.2rem;
+    color: var(--text-primary);
+}
+.ticket-modal-content p {
+    color: var(--text-secondary);
+    margin-bottom: 25px;
+}
+.ticket-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 25px;
+}
+.action-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px;
+    font-size: 1rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.action-button.download {
+    background-color: #3B82F6; /* Azul */
+    color: white;
+}
+.action-button.whatsapp {
+    background-color: #25D366; /* Verde WhatsApp */
+    color: white;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+.whatsapp-share-group {
+    display: flex;
+}
+.whatsapp-share-group input {
+    flex-grow: 1;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-right: none;
+}
+.secondary-button {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 10px;
+    width: 100%;
+    border-radius: 6px;
+    cursor: pointer;
+}

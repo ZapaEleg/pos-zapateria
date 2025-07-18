@@ -1,0 +1,95 @@
+/* Definimos nuestra paleta de colores como variables para fácil mantenimiento */
+:root {
+  --background-light: #F9FAFB; /* Fondo principal claro */
+  --background-dark: #1F2937;  /* Fondo de la barra lateral */
+  --text-primary: #111827;      /* Texto principal oscuro */
+  --text-secondary: #6B7280;    /* Texto secundario/gris */
+  --text-light: #F9FAFB;        /* Texto sobre fondos oscuros */
+  --border-color: #E5E7EB;      /* Color de bordes sutiles */
+  --primary-accent: #6D28D9;    /* Acento principal (Violeta) */
+  --primary-accent-hover: #5B21B6;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background-light);
+  color: var(--text-primary);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Estilo general para tablas */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: white;
+    box-shadow: var(--shadow-sm);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+th, td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+thead {
+    background-color: #F3F4F6;
+}
+
+th {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+/* Estilos para inputs y botones generales */
+input, select {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background-color: white;
+  font-size: 1rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--primary-accent);
+  box-shadow: 0 0 0 2px #C4B5FD;
+}
+
+button.primary-button {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 6px;
+  background-color: var(--primary-accent);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+button.primary-button:hover {
+  background-color: var(--primary-accent-hover);
+}
+
+.global-loader {
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 1.5rem;
+  color: var(--text-secondary);
+}

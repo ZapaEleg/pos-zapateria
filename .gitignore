@@ -1,0 +1,14 @@
+# Dependencias
+node_modules
+
+# Archivos de entorno (Contienen llaves secretas de Supabase, etc.)
+.env
+.env.local
+
+# Archivos de compilación
+build
+dist
+
+# Logs y archivos del sistema operativo
+npm-debug.log
+.DS_Store
