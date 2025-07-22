@@ -1,168 +1,268 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
-import Modal from './Modal';
 import './AddStockForm.css';
 
-const SIZE_RANGES = {
-    "12-14.5": { start: 12, end: 14.5 }, "15-17.5": { start: 15, end: 17.5 },
-    "18-21.5": { start: 18, end: 21.5 }, "22-26.5": { start: 22, end: 26.5 },
-    "25-29.5": { start: 25, end: 29.5 },
-};
+// Mapeo de categorías y rangos de tallas
+const CATEGORIES = [
+  { label: 'Caballero', value: 'caballero', sizes: Array.from({ length: 10 }, (_, i) => (25 + i * 0.5).toFixed(1)) }, // 25-29.5
+  { label: 'Dama', value: 'dama', sizes: Array.from({ length: 10 }, (_, i) => (22 + i * 0.5).toFixed(1)) }, // 22-26.5
+  { label: 'Niña', value: 'niña', sizes: Array.from({ length: 28 }, (_, i) => (12 + i * 0.5).toFixed(1)) }, // 12-25.5
+  { label: 'Niño', value: 'niño', sizes: Array.from({ length: 28 }, (_, i) => (12 + i * 0.5).toFixed(1)) }, // 12-25.5
+];
 
 const AddStockForm = () => {
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [loading, setLoading] = useState(false);
-    const [generalInfo, setGeneralInfo] = useState({
-        brand: '', model: '', color: '', category: 'niña',
-        totalQuantity: '', price: '', sizeRange: Object.keys(SIZE_RANGES)[0]
+  // Estado general
+  const [brands, setBrands] = useState([]);
+  const [brand, setBrand] = useState('');
+  const [model, setModel] = useState('');
+  const [color, setColor] = useState('');
+  const [category, setCategory] = useState('');
+  const [sizes, setSizes] = useState([]); // tallas a mostrar
+  const [sizeStocks, setSizeStocks] = useState({}); // { talla: cantidad }
+  const [skuPrefix, setSkuPrefix] = useState('');
+  const [precioMayoreo, setPrecioMayoreo] = useState('');
+  const [precioVenta, setPrecioVenta] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  // --- Cargar marcas ---
+  useEffect(() => {
+    const fetchBrands = async () => {
+      const { data } = await supabase.from('brands').select('id, name');
+      if (data) setBrands(data);
+    };
+    fetchBrands();
+  }, []);
+
+  // --- Al seleccionar categoría, generar tallas ---
+  useEffect(() => {
+    const catObj = CATEGORIES.find(cat => cat.value === category);
+    if (catObj) {
+      setSizes(catObj.sizes);
+      // Reset distribución
+      setSizeStocks(catObj.sizes.reduce((acc, s) => ({ ...acc, [s]: '' }), {}));
+    } else {
+      setSizes([]);
+      setSizeStocks({});
+    }
+  }, [category]);
+
+  // --- Precio de venta automático ---
+  useEffect(() => {
+    if (!isNaN(parseFloat(precioMayoreo)) && precioMayoreo !== '') {
+      const pv = parseFloat(precioMayoreo) * 1.7 + 20;
+      setPrecioVenta(pv.toFixed(2));
+    } else {
+      setPrecioVenta('');
+    }
+  }, [precioMayoreo]);
+
+  // --- Calcular stock total
+  const totalStock = Object.values(sizeStocks).reduce((acc, qty) => acc + (parseInt(qty) || 0), 0);
+
+  // --- Guardar producto y variantes ---
+  const handleSave = async () => {
+    if (!brand || !model || !color || !category || !precioMayoreo || !precioVenta) {
+      alert('Completa todos los campos requeridos');
+      return;
+    }
+    if (totalStock === 0) {
+      alert('Debes distribuir al menos un par en alguna talla.');
+      return;
+    }
+    setCreating(true);
+
+    // 1. Buscar o crear marca
+    let brandId;
+    let brandObj = brands.find(b => b.name.toLowerCase() === brand.toLowerCase());
+    if (!brandObj) {
+      const { data: newBrand, error: brandError } = await supabase
+        .from('brands')
+        .insert({ name: brand })
+        .select('id, name')
+        .single();
+      if (brandError) {
+        alert('Error al crear la marca');
+        setCreating(false);
+        return;
+      }
+      brandId = newBrand.id;
+      setBrands([...brands, newBrand]);
+    } else {
+      brandId = brandObj.id;
+    }
+
+    // 2. Buscar o crear producto
+    let productId;
+    const { data: existingProduct } = await supabase
+      .from('products')
+      .select('id')
+      .eq('brand_id', brandId)
+      .eq('model', model)
+      .maybeSingle();
+    if (existingProduct) {
+      productId = existingProduct.id;
+    } else {
+      const { data: newProd, error } = await supabase
+        .from('products')
+        .insert({ brand_id: brandId, model, category })
+        .select('id')
+        .single();
+      if (error) {
+        alert('Error al crear el producto');
+        setCreating(false);
+        return;
+      }
+      productId = newProd.id;
+    }
+
+    // 3. Crear variantes por cada talla con stock > 0
+    const variantsToInsert = [];
+    sizes.forEach(size => {
+      const qty = parseInt(sizeStocks[size]) || 0;
+      if (qty > 0) {
+        // SKU: puedes poner una lógica más avanzada según tu preferencia
+        const sku = `${skuPrefix || (brand.slice(0,3).toUpperCase())}-${model.replace(/\s/g,"").slice(0,3).toUpperCase()}-${color.replace(/\s/g,"").slice(0,3).toUpperCase()}-${size}`;
+        variantsToInsert.push({
+          product_id: productId,
+          color,
+          size,
+          price: precioVenta,
+          sku,
+          stock: qty,
+        });
+      }
     });
-    const [sizeDistribution, setSizeDistribution] = useState({});
-    const [sortedSizes, setSortedSizes] = useState([]);
 
-    // Referencias para la navegación con Enter
-    const fieldRefs = useRef({});
-    const sizeInputRefs = useRef({});
+    if (variantsToInsert.length === 0) {
+      alert('Debes distribuir al menos un par en alguna talla.');
+      setCreating(false);
+      return;
+    }
 
-    const generateSizes = (rangeKey) => {
-        const { start, end } = SIZE_RANGES[rangeKey];
-        const sizes = [];
-        for (let i = start; i <= end; i += 0.5) { sizes.push(i); }
-        return sizes;
-    };
+    const { error: variantErr } = await supabase
+      .from('variants')
+      .insert(variantsToInsert);
 
-    const handleNextStep = () => {
-        if (!generalInfo.brand || !generalInfo.model || !generalInfo.color || !generalInfo.totalQuantity || !generalInfo.price) {
-            alert('Por favor, completa toda la información general.');
-            return;
-        }
-        const sizes = generateSizes(generalInfo.sizeRange);
-        const initialDistribution = {};
-        sizes.forEach(size => { initialDistribution[String(size)] = 0; });
-        
-        setSortedSizes(sizes); // Guardamos las tallas ordenadas
-        setSizeDistribution(initialDistribution);
-        setIsModalOpen(true);
-    };
+    if (variantErr) {
+      alert('Error al guardar: ' + variantErr.message);
+      setCreating(false);
+      return;
+    }
 
-    const handleDistributionChange = (size, quantity) => {
-        setSizeDistribution(prev => ({ ...prev, [size]: parseInt(quantity, 10) || 0 }));
-    };
+    setCreating(false);
+    alert('¡Producto guardado con éxito!');
+    // Reset
+    setModel('');
+    setColor('');
+    setCategory('');
+    setSizes([]);
+    setSizeStocks({});
+    setSkuPrefix('');
+    setPrecioMayoreo('');
+    setPrecioVenta('');
+  };
 
-    const handleSaveStock = async () => {
-        setLoading(true);
-        const distributedTotal = Object.values(sizeDistribution).reduce((sum, qty) => sum + qty, 0);
-
-        if (distributedTotal !== parseInt(generalInfo.totalQuantity, 10)) {
-            alert('La cantidad distribuida no coincide con la cantidad total.');
-            setLoading(false);
-            return;
-        }
-
-        try {
-            let { data: brandData } = await supabase.from('brands').select('id').eq('name', generalInfo.brand.trim()).single();
-            if (!brandData) {
-                const { data: newBrand, error } = await supabase.from('brands').insert({ name: generalInfo.brand.trim() }).select().single();
-                if (error) throw error;
-                brandData = newBrand;
-            }
-
-            let { data: productData } = await supabase.from('products').select('id').eq('model', generalInfo.model.trim()).eq('brand_id', brandData.id).single();
-            if (!productData) {
-                const { data: newProduct, error } = await supabase.from('products').insert({ model: generalInfo.model.trim(), brand_id: brandData.id, category: generalInfo.category }).select().single();
-                if (error) throw error;
-                productData = newProduct;
-            }
-
-            const variants_to_update = Object.entries(sizeDistribution)
-                .filter(([size, stock]) => stock > 0)
-                .map(([size, stock]) => ({
-                    product_id: productData.id,
-                    color: generalInfo.color.trim(),
-                    size: parseFloat(size),
-                    price: parseFloat(generalInfo.price),
-                    stock_change: stock,
-                    sku: `${generalInfo.brand.substring(0, 3)}-${generalInfo.model}-${size}`.toUpperCase()
-                }));
-
-            if (variants_to_update.length > 0) {
-                const { error: batchError } = await supabase.rpc('upsert_stock_batch', { variants_to_update });
-                if (batchError) throw batchError;
-            }
-
-            alert('¡Stock añadido con éxito!');
-            setIsModalOpen(false);
-            setGeneralInfo({ brand: '', model: '', color: '', category: 'niña', totalQuantity: '', price: '', sizeRange: '12-14.5' });
-
-        } catch (error) {
-            alert('Error al guardar el stock: ' + error.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleKeyDown = (e, fieldName) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            const fieldOrder = ['brand', 'model', 'color', 'category', 'totalQuantity', 'price', 'sizeRange', 'distributeButton'];
-            const currentIndex = fieldOrder.indexOf(fieldName);
-            const nextField = fieldRefs.current[fieldOrder[currentIndex + 1]];
-            if (nextField) {
-                nextField.focus();
-            }
-        }
-    };
-
-    const handleSizeKeyDown = (e, index) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            const nextSize = sortedSizes[index + 1];
-            const nextInput = sizeInputRefs.current[nextSize];
-            if (nextInput) {
-                nextInput.focus();
-            } else {
-                // Si es el último, enfocar el botón de guardar
-                fieldRefs.current['saveButton']?.focus();
-            }
-        }
-    };
-
-    const distributedTotal = Object.values(sizeDistribution).reduce((sum, qty) => sum + qty, 0);
-
-    return (
-        <>
-            <div className="add-stock-container">
-                <h3>Añadir Nuevo Stock al Inventario</h3>
-                <div className="stock-entry-form">
-                    <div className="input-group"><label>Marca</label><input ref={el => fieldRefs.current['brand'] = el} name="brand" value={generalInfo.brand} onKeyDown={(e) => handleKeyDown(e, 'brand')} onChange={(e) => setGeneralInfo({...generalInfo, brand: e.target.value})} /></div>
-                    <div className="input-group"><label>Modelo</label><input ref={el => fieldRefs.current['model'] = el} name="model" value={generalInfo.model} onKeyDown={(e) => handleKeyDown(e, 'model')} onChange={(e) => setGeneralInfo({...generalInfo, model: e.target.value})} /></div>
-                    <div className="input-group"><label>Color</label><input ref={el => fieldRefs.current['color'] = el} name="color" value={generalInfo.color} onKeyDown={(e) => handleKeyDown(e, 'color')} onChange={(e) => setGeneralInfo({...generalInfo, color: e.target.value})} /></div>
-                    <div className="input-group"><label>Categoría</label><select ref={el => fieldRefs.current['category'] = el} name="category" value={generalInfo.category} onKeyDown={(e) => handleKeyDown(e, 'category')} onChange={(e) => setGeneralInfo({...generalInfo, category: e.target.value})}><option value="niña">Niña</option><option value="niño">Niño</option><option value="dama">Dama</option><option value="caballero">Caballero</option></select></div>
-                    <div className="input-group"><label>Cantidad Total</label><input ref={el => fieldRefs.current['totalQuantity'] = el} type="number" name="totalQuantity" value={generalInfo.totalQuantity} onKeyDown={(e) => handleKeyDown(e, 'totalQuantity')} onChange={(e) => setGeneralInfo({...generalInfo, totalQuantity: e.target.value})} /></div>
-                    <div className="input-group"><label>Precio Venta</label><input ref={el => fieldRefs.current['price'] = el} type="number" name="price" value={generalInfo.price} onKeyDown={(e) => handleKeyDown(e, 'price')} onChange={(e) => setGeneralInfo({...generalInfo, price: e.target.value})} /></div>
-                    <div className="input-group"><label>Rango de Tallas</label><select ref={el => fieldRefs.current['sizeRange'] = el} name="sizeRange" value={generalInfo.sizeRange} onKeyDown={(e) => handleKeyDown(e, 'sizeRange')} onChange={(e) => setGeneralInfo({...generalInfo, sizeRange: e.target.value})}>{Object.keys(SIZE_RANGES).map(range => <option key={range} value={range}>{range}</option>)}</select></div>
-                </div>
-                <button ref={el => fieldRefs.current['distributeButton'] = el} onClick={handleNextStep} className="primary-button full-width-button">Distribuir Tallas</button>
-            </div>
-            
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Distribuir Cantidad por Talla">
-                <div className="size-distribution-modal">
-                    <div className="distribution-summary"><p><strong>{generalInfo.brand} {generalInfo.model}</strong> - {generalInfo.color}</p><p>Total a distribuir: <strong>{generalInfo.totalQuantity}</strong> | Distribuido: <strong className={distributedTotal !== parseInt(generalInfo.totalQuantity, 10) ? 'error' : 'success'}>{distributedTotal}</strong></p></div>
-                    <div className="distribution-grid">
-                        {sortedSizes.map((size, index) => (
-                            <div key={size} className="input-group">
-                                <label>Talla {size}</label>
-                                <input ref={el => sizeInputRefs.current[size] = el} type="number" min="0" value={sizeDistribution[size] || 0} onKeyDown={(e) => handleSizeKeyDown(e, index)} onChange={(e) => handleDistributionChange(size, e.target.value)} />
-                            </div>
-                        ))}
-                    </div>
-                    <button ref={el => fieldRefs.current['saveButton'] = el} onClick={handleSaveStock} className="primary-button" disabled={loading || distributedTotal !== parseInt(generalInfo.totalQuantity, 10)}>
-                        {loading ? 'Guardando...' : 'Guardar Stock'}
-                    </button>
-                </div>
-            </Modal>
-        </>
-    );
+  // --- Render ---
+  return (
+    <div className="add-stock-form">
+      <h2>Alta de Producto / Añadir Stock</h2>
+      <div className="form-row">
+        <label>Marca:</label>
+        <input
+          list="brand-list"
+          value={brand}
+          onChange={e => setBrand(e.target.value)}
+          placeholder="Escribe o selecciona"
+          autoComplete="off"
+        />
+        <datalist id="brand-list">
+          {brands.map(b => (
+            <option key={b.id} value={b.name} />
+          ))}
+        </datalist>
+      </div>
+      <div className="form-row">
+        <label>Modelo:</label>
+        <input value={model} onChange={e => setModel(e.target.value)} />
+      </div>
+      <div className="form-row">
+        <label>Color:</label>
+        <input value={color} onChange={e => setColor(e.target.value)} />
+      </div>
+      <div className="form-row">
+        <label>Categoría:</label>
+        <select value={category} onChange={e => setCategory(e.target.value)}>
+          <option value="">Selecciona</option>
+          {CATEGORIES.map(cat => (
+            <option key={cat.value} value={cat.value}>{cat.label}</option>
+          ))}
+        </select>
+      </div>
+      <div className="form-row">
+        <label>Prefijo SKU (opcional):</label>
+        <input value={skuPrefix} onChange={e => setSkuPrefix(e.target.value)} placeholder="Ej: NIKE-AIR-BLK" />
+      </div>
+      <div className="form-row">
+        <label>Precio de mayoreo:</label>
+        <input
+          type="number"
+          min={0}
+          value={precioMayoreo}
+          onChange={e => setPrecioMayoreo(e.target.value)}
+          placeholder="Ejemplo: 500"
+        />
+      </div>
+      <div className="form-row">
+        <label>Precio de venta:</label>
+        <input
+          type="number"
+          min={0}
+          value={precioVenta}
+          readOnly
+          style={{ background: "#f3f3f3" }}
+        />
+      </div>
+      {/* --- Distribución de tallas --- */}
+      {sizes.length > 0 && (
+        <div className="tallas-table-section">
+          <label>Distribuir stock por talla:</label>
+          <div className="tallas-table-scroll">
+            <table className="tallas-table">
+              <thead>
+                <tr>
+                  {sizes.map(s => (
+                    <th key={s}>{s}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  {sizes.map(s => (
+                    <td key={s}>
+                      <input
+                        type="number"
+                        min={0}
+                        value={sizeStocks[s] || ''}
+                        onChange={e =>
+                          setSizeStocks(prev => ({ ...prev, [s]: e.target.value }))}
+                        style={{ width: 46, textAlign: 'center' }}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style={{marginTop:12, fontWeight:600}}>Total pares: {totalStock}</div>
+        </div>
+      )}
+      <div className="form-row" style={{marginTop: 24}}>
+        <button className="primary-button" onClick={handleSave} disabled={creating}>
+          {creating ? "Guardando..." : "Guardar producto"}
+        </button>
+      </div>
+    </div>
+  );
 };
 
 export default AddStockForm;
-

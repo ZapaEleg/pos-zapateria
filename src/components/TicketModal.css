@@ -1,60 +1,104 @@
-.ticket-modal-content {
-    text-align: center;
+.ticket-modal-bg {
+  position: fixed;
+  inset: 0;
+  background: #0008;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
 }
-.ticket-modal-content h4 {
-    margin-top: 0;
-    font-size: 1.2rem;
-    color: var(--text-primary);
+.ticket-modal-panel {
+  background: #fff;
+  border-radius: 17px;
+  box-shadow: 0 2px 20px #0002;
+  padding: 24px 28px 16px 28px;
+  min-width: 370px;
+  max-width: 99vw;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  border: 2.5px solid #ede9fe;
+  position: relative;
 }
-.ticket-modal-content p {
-    color: var(--text-secondary);
-    margin-bottom: 25px;
+.ticket-header {
+  text-align: center;
+  margin-bottom: 6px;
 }
-.ticket-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    margin-bottom: 25px;
+.ticket-logo {
+  font-size: 1.3em;
+  font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+  color: #6d28d9;
+  font-weight: 900;
+  margin-bottom: 2px;
 }
-.action-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    width: 100%;
-    padding: 12px;
-    font-size: 1rem;
-    font-weight: 600;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s;
+.ticket-title {
+  font-size: 1em;
+  color: #222;
+  font-weight: 700;
 }
-.action-button.download {
-    background-color: #3B82F6; /* Azul */
-    color: white;
+.ticket-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.97em;
+  margin-bottom: 9px;
+  color: #656;
+  font-weight: 500;
 }
-.action-button.whatsapp {
-    background-color: #25D366; /* Verde WhatsApp */
-    color: white;
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
+.ticket-body {
+  margin: 9px 0 0 0;
 }
-.whatsapp-share-group {
-    display: flex;
+.ticket-products {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 7px;
+  font-size: 0.98em;
 }
-.whatsapp-share-group input {
-    flex-grow: 1;
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
-    border-right: none;
+.ticket-products th, .ticket-products td {
+  border: 1px solid #ede9fe;
+  padding: 5px 7px;
+  text-align: center;
 }
-.secondary-button {
-    background: none;
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-    padding: 10px;
-    width: 100%;
-    border-radius: 6px;
-    cursor: pointer;
+.ticket-products th {
+  background: #ede9fe;
+  color: #6d28d9;
+  font-weight: 700;
+}
+.ticket-summary {
+  margin-top: 7px;
+  border-top: 1.5px dashed #a7f3d0;
+  padding-top: 7px;
+}
+.ticket-summary > div {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2px;
+  font-size: 1.06em;
+}
+.ticket-summary .ticket-total {
+  font-weight: 900;
+  color: #6d28d9;
+  font-size: 1.13em;
+  margin-top: 2px;
+}
+.ticket-footer {
+  text-align: center;
+  color: #444;
+  font-size: 1.07em;
+  font-family: inherit;
+  margin-top: 10px;
+}
+.ticket-qr {
+  margin: 8px 0 2px 0;
+  min-height: 24px;
+}
+@media (max-width: 600px) {
+  .ticket-modal-panel {
+    min-width: 97vw;
+    padding: 10px 2vw 8px 2vw;
+  }
+  .ticket-products th, .ticket-products td {
+    padding: 2px 2px;
+    font-size: 0.89em;
+  }
+  .ticket-summary > div {
+    font-size: 0.97em;
+  }
 }

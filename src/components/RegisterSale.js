@@ -1,213 +1,740 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import Modal from './Modal';
 import TicketModal from './TicketModal';
-import { FiTrash2, FiCalendar, FiAlertCircle } from 'react-icons/fi';
 import './RegisterSale.css';
 
+const defaultProduct = {
+  brand: '',
+  model: '',
+  color: '',
+  size: '',
+  price: '',
+  sku: '',
+  variant_id: null,
+  discount: 0,
+  final_price: '',
+  quantity: 1,
+};
+
 const RegisterSale = ({ onSaleComplete }) => {
-    const [cart, setCart] = useState([]);
-    const [currentItem, setCurrentItem] = useState({ brand: '', model: '', size: '', color: '', price: '', quantity: 1, sku: '' });
-    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-    const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
-    const [lastSaleData, setLastSaleData] = useState(null);
-    const [modalStep, setModalStep] = useState('payment');
-    const [paymentMethod, setPaymentMethod] = useState('efectivo');
-    const [amountPaid, setAmountPaid] = useState({ efectivo: 0, transferencia: 0 });
-    const [loading, setLoading] = useState(false);
-    const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
-    const [brands, setBrands] = useState([]);
-    const [models, setModels] = useState([]);
-    const [brandSuggestions, setBrandSuggestions] = useState([]);
-    const [modelSuggestions, setModelSuggestions] = useState([]);
-    const brandInputRef = useRef(null);
-    const modelInputRef = useRef(null);
-    const sizeInputRef = useRef(null);
-    const colorInputRef = useRef(null);
-    const priceInputRef = useRef(null);
-    const quantityInputRef = useRef(null);
-    const skuInputRef = useRef(null);
-    const addButtonRef = useRef(null);
+  // Estados generales
+  const [brands, setBrands] = useState([]);
+  const [filteredModels, setFilteredModels] = useState([]);
+  const [filteredColors, setFilteredColors] = useState([]);
+  const [filteredSizes, setFilteredSizes] = useState([]);
+  const [product, setProduct] = useState({ ...defaultProduct });
+  const [cart, setCart] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            const { data: brandsData } = await supabase.from('brands').select('id, name').order('name');
-            const { data: productsData } = await supabase.from('products').select('id, model, brand_id');
-            setBrands(brandsData || []);
-            setModels(productsData || []);
-        };
-        fetchData();
-    }, []);
+  // Cliente y venta
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerNotes, setCustomerNotes] = useState('');
+  const [saleDate, setSaleDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().slice(0, 10);
+  });
+  const [isApartado, setIsApartado] = useState(false);
+  const [anticipo, setAnticipo] = useState('');
+  const [restante, setRestante] = useState('');
+  const [expiraEl, setExpiraEl] = useState(null);
 
-    const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        setCurrentItem(prev => ({ ...prev, [name]: value }));
-        if (name === 'brand') {
-            if (value) {
-                const suggestions = brands.filter(b => b.name.toLowerCase().includes(value.toLowerCase()));
-                setBrandSuggestions(suggestions);
-            } else {
-                setBrandSuggestions([]);
-                setCurrentItem(prev => ({ ...prev, brandId: null, model: '', modelId: null }));
-                setModelSuggestions([]);
-            }
-        }
-        if (name === 'model') {
-            const currentBrandId = currentItem.brandId;
-            if (value && currentBrandId) {
-                const suggestions = models.filter(m => m.brand_id === currentBrandId && m.model.toLowerCase().includes(value.toLowerCase()));
-                setModelSuggestions(suggestions);
-            } else { setModelSuggestions([]); }
-        }
+  // Pago
+  const [paymentType, setPaymentType] = useState('cash');
+  const [cashAmount, setCashAmount] = useState('');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
+  const [pipOpen, setPipOpen] = useState(false);
+  const [lastSaleData, setLastSaleData] = useState(null);
+
+  // Refs para inputs
+  const brandRef = useRef();
+  const modelRef = useRef();
+  const colorRef = useRef();
+  const sizeRef = useRef();
+  const quantityRef = useRef();
+
+  // Navegador de rutas
+  const navigate = useNavigate();
+
+  // --- Utilidad para fecha de expiración de apartado
+  function calcularFechaExpiracionApartado(inicio) {
+    let dias = 0;
+    let fecha = new Date(inicio);
+    while (dias < 20) {
+      fecha.setDate(fecha.getDate() + 1);
+      if (fecha.getDay() !== 6) {
+        dias++;
+      }
+    }
+    return fecha;
+  }
+
+  // --- Cargar marcas ---
+  useEffect(() => {
+    const fetchBrands = async () => {
+      const { data } = await supabase.from('brands').select('id, name');
+      if (data) setBrands(data);
     };
+    fetchBrands();
+  }, []);
 
-    const selectSuggestion = (field, suggestion) => {
-        if (field === 'brand') {
-            setCurrentItem(prev => ({ ...prev, brand: suggestion.name, brandId: suggestion.id, model: '' }));
-            setBrandSuggestions([]); setModelSuggestions([]); modelInputRef.current.focus();
-        }
-        if (field === 'model') {
-            setCurrentItem(prev => ({ ...prev, model: suggestion.model, modelId: suggestion.id }));
-            setModelSuggestions([]); sizeInputRef.current.focus();
-        }
+  // --- Autocompletar y filtrar modelos según marca ---
+  useEffect(() => {
+    const fetchModels = async () => {
+      setFilteredModels([]);
+      setProduct(p => ({ ...p, model: '', color: '', size: '', sku: '', price: '', variant_id: null }));
+      if (!product.brand) return;
+      const brandObj = brands.find(b => b.name.toLowerCase() === product.brand.toLowerCase());
+      if (!brandObj) return;
+      const { data: products } = await supabase
+        .from('products')
+        .select('model')
+        .eq('brand_id', brandObj.id);
+      if (products) {
+        const models = [...new Set(products.map(p => p.model))];
+        setFilteredModels(models);
+      }
     };
+    fetchModels();
+    // eslint-disable-next-line
+  }, [product.brand, brands]);
 
-    const handleKeyDown = (e, field) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            const fieldRefs = { brand: modelInputRef, model: sizeInputRef, size: colorInputRef, color: skuInputRef, sku: priceInputRef, price: quantityInputRef, quantity: addButtonRef };
-            const suggestions = { brand: brandSuggestions, model: modelSuggestions };
-            if (suggestions[field]?.length > 0) { selectSuggestion(field, suggestions[field][0]); }
-            else { fieldRefs[field]?.current.focus(); }
-        }
+  // --- Autocompletar colores según marca y modelo ---
+  useEffect(() => {
+    const fetchColors = async () => {
+      setFilteredColors([]);
+      setProduct(p => ({ ...p, color: '', size: '', sku: '', price: '', variant_id: null }));
+      if (!product.brand || !product.model) return;
+      const brandObj = brands.find(b => b.name.toLowerCase() === product.brand.toLowerCase());
+      if (!brandObj) return;
+      const { data: prod } = await supabase
+        .from('products')
+        .select('id')
+        .eq('brand_id', brandObj.id)
+        .eq('model', product.model)
+        .maybeSingle();
+      if (!prod) return;
+      const { data: variants } = await supabase
+        .from('variants')
+        .select('color')
+        .eq('product_id', prod.id);
+      if (variants) {
+        const colors = [...new Set(variants.map(v => v.color))];
+        setFilteredColors(colors);
+      }
     };
+    fetchColors();
+    // eslint-disable-next-line
+  }, [product.brand, product.model, brands]);
 
-    const handleAddItem = async () => {
-        if (!currentItem.brand || !currentItem.model || !currentItem.size || !currentItem.color || !currentItem.price) {
-            alert('Por favor, completa todos los campos del producto, excepto SKU.'); return;
-        }
-        
-        const { data: productData } = await supabase.from('products').select('id, category').eq('model', currentItem.model).eq('brand_id', currentItem.brandId).single();
-        if (!productData) {
-            if (window.confirm("Este modelo no existe en el inventario. ¿Deseas agregarlo a la venta de todos modos?")) {
-                setCart(prev => [...prev, { ...currentItem, id: Date.now(), in_stock: false, category: 'N/A' }]);
-                setCurrentItem({ brand: '', model: '', size: '', color: '', price: '', quantity: 1, sku: '' });
-                brandInputRef.current.focus();
-            }
-            return;
-        }
-
-        const { data: variantData, error } = await supabase.from('variants').select('id, stock').eq('product_id', productData.id).eq('color', currentItem.color).eq('size', currentItem.size).single();
-        if (error || !variantData) {
-            if (window.confirm("Esta variante (color/talla) no existe en el inventario. ¿Deseas agregarla a la venta de todos modos?")) {
-                setCart(prev => [...prev, { ...currentItem, id: Date.now(), in_stock: false, category: productData.category }]);
-                setCurrentItem({ brand: '', model: '', size: '', color: '', price: '', quantity: 1, sku: '' });
-                brandInputRef.current.focus();
-            }
-            return;
-        }
-
-        if (variantData.stock < currentItem.quantity) {
-            alert(`Stock insuficiente. Solo quedan ${variantData.stock} pares.`); return;
-        }
-
-        setCart(prev => [...prev, { ...currentItem, variant_id: variantData.id, id: Date.now(), in_stock: true, category: productData.category }]);
-        setCurrentItem({ brand: '', model: '', size: '', color: '', price: '', quantity: 1, sku: '' });
-        brandInputRef.current.focus();
+  // --- Autocompletar tallas según marca, modelo, color ---
+  useEffect(() => {
+    const fetchSizes = async () => {
+      setFilteredSizes([]);
+      setProduct(p => ({ ...p, size: '', sku: '', price: '', variant_id: null }));
+      if (!product.brand || !product.model || !product.color) return;
+      const brandObj = brands.find(b => b.name.toLowerCase() === product.brand.toLowerCase());
+      if (!brandObj) return;
+      const { data: prod } = await supabase
+        .from('products')
+        .select('id')
+        .eq('brand_id', brandObj.id)
+        .eq('model', product.model)
+        .maybeSingle();
+      if (!prod) return;
+      const { data: variants } = await supabase
+        .from('variants')
+        .select('size')
+        .eq('product_id', prod.id)
+        .eq('color', product.color);
+      if (variants) {
+        const sizes = [...new Set(variants.map(v => v.size))];
+        setFilteredSizes(sizes);
+      }
     };
+    fetchSizes();
+    // eslint-disable-next-line
+  }, [product.brand, product.model, product.color, brands]);
 
-    const handleRemoveItem = (itemId) => { setCart(cart.filter(item => item.id !== itemId)); };
-    const cartTotal = cart.reduce((sum, item) => sum + (parseFloat(item.price || 0) * item.quantity), 0);
-    const totalPaid = parseFloat(amountPaid.efectivo || 0) + parseFloat(amountPaid.transferencia || 0);
-    const changeDue = totalPaid > cartTotal ? totalPaid - cartTotal : 0;
-
-    const handleFinalizeClick = () => {
-        if (cart.length === 0) { alert("No hay productos en la nota."); return; }
-        setAmountPaid({ efectivo: cartTotal, transferencia: 0 });
-        setModalStep('payment'); setIsPaymentModalOpen(true);
+  // --- Al seleccionar talla, traer SKU y precio ---
+  useEffect(() => {
+    const fetchVariantInfo = async () => {
+      setProduct(p => ({ ...p, sku: '', price: '', variant_id: null, final_price: '', discount: 0 }));
+      if (!product.brand || !product.model || !product.color || !product.size) return;
+      const brandObj = brands.find(b => b.name.toLowerCase() === product.brand.toLowerCase());
+      if (!brandObj) return;
+      const { data: prod } = await supabase
+        .from('products')
+        .select('id')
+        .eq('brand_id', brandObj.id)
+        .eq('model', product.model)
+        .maybeSingle();
+      if (!prod) return;
+      const { data: variant } = await supabase
+        .from('variants')
+        .select('id, sku, price')
+        .eq('product_id', prod.id)
+        .eq('color', product.color)
+        .eq('size', product.size)
+        .maybeSingle();
+      if (variant) {
+        setProduct(prev => ({
+          ...prev,
+          sku: variant.sku,
+          price: variant.price,
+          variant_id: variant.id,
+          final_price: variant.price,
+          discount: 0,
+        }));
+      }
     };
+    fetchVariantInfo();
+    // eslint-disable-next-line
+  }, [product.brand, product.model, product.color, product.size, brands]);
 
-    const handleGoToConfirmation = (e) => {
-        if(e) e.preventDefault();
-        if(totalPaid < cartTotal) { alert("El monto pagado es menor al total."); return; }
-        setModalStep('confirmation');
-    };
+  // --- Apartado: cálculo restante y expiración ---
+  useEffect(() => {
+    if (isApartado && anticipo && !isNaN(anticipo)) {
+      const cartTotal = cart.reduce(
+        (acc, item) => acc + (Number(item.final_price) || 0) * (Number(item.quantity) || 0),
+        0
+      );
+      const restanteCalc = Math.max(0, cartTotal - Number(anticipo));
+      setRestante(restanteCalc);
+    } else {
+      setRestante('');
+    }
+    if (isApartado) {
+      setExpiraEl(calcularFechaExpiracionApartado(saleDate));
+    } else {
+      setExpiraEl(null);
+    }
+  }, [isApartado, anticipo, cart, saleDate]);
 
-    const executeSale = async () => {
-        setLoading(true);
-        const cart_items = cart.filter(item => item.in_stock).map(item => ({ variant_id: item.variant_id, quantity: parseInt(item.quantity, 10), price_at_sale: parseFloat(item.price) }));
-        const finalSaleTimestamp = new Date(saleDate);
-        finalSaleTimestamp.setHours(new Date().getHours(), new Date().getMinutes(), new Date().getSeconds());
+  // --- Descuento ---
+  const handleDiscountChange = (e) => {
+    const discount = parseFloat(e.target.value) || 0;
+    setProduct(prev => ({
+      ...prev,
+      discount: discount,
+      final_price: Math.max(0, (parseFloat(prev.price) || 0) - discount).toFixed(2),
+    }));
+  };
 
-        let saleId = null;
+  // --- Agregar producto al carrito ---
+  const handleAddProduct = () => {
+    if (
+      !product.variant_id ||
+      !product.brand ||
+      !product.model ||
+      !product.color ||
+      !product.size ||
+      !product.price
+    ) {
+      alert('Selecciona un producto válido del inventario.');
+      return;
+    }
+    setCart([...cart, { ...product }]);
+    setProduct({ ...defaultProduct });
+  };
 
-        if (cart_items.length > 0) {
-            const { data, error } = await supabase.rpc('process_sale_final', { cart_items, p_sale_timestamp: finalSaleTimestamp.toISOString() });
-            if (error) { alert('Error al registrar la venta: ' + error.message); setLoading(false); return; }
-            saleId = data;
-        } else {
-            saleId = 'TEMP-' + Date.now();
-            alert("Venta registrada localmente (sin afectación de inventario).");
-        }
-        
-        setLastSaleData({ id: saleId, cart: cart, total: cartTotal, timestamp: finalSaleTimestamp.toISOString() });
-        setIsPaymentModalOpen(false);
-        setIsTicketModalOpen(true);
-        setCart([]);
-        if (onSaleComplete) { onSaleComplete(); }
+  // --- Eliminar producto del carrito ---
+  const handleRemoveProduct = (idx) => {
+    setCart(cart.filter((_, i) => i !== idx));
+  };
+
+  // --- Total ---
+  const cartTotal = cart.reduce(
+    (acc, item) => acc + (Number(item.final_price) || 0) * (Number(item.quantity) || 0),
+    0
+  );
+
+  // --- Guardar cliente si no existe ---
+  const saveCustomer = async (name, phone) => {
+    if (!phone) return null;
+    const normalized = phone.replace(/\D/g, '');
+    const { data: existing, error: searchError } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('phone', normalized)
+      .maybeSingle();
+    if (searchError) return null;
+    if (existing) return existing.id;
+    const { data: inserted, error: insertError } = await supabase
+      .from('customers')
+      .insert([{ name: name || '', phone: normalized }])
+      .select('id')
+      .single();
+    if (insertError) return null;
+    return inserted.id;
+  };
+
+  // --- Registro de venta ---
+  const executeSale = async () => {
+    setLoading(true);
+    try {
+      const cart_items = cart
+        .filter(item => item.quantity > 0)
+        .map(item => ({
+          variant_id: item.variant_id,
+          quantity: parseInt(item.quantity, 10),
+          price_at_sale: parseFloat(item.final_price),
+          discount: parseFloat(item.discount) || 0,
+        }));
+
+      if (cart_items.length === 0) {
+        alert('Agrega al menos un producto para registrar la venta.');
         setLoading(false);
-    };
-    
-    const handlePaymentAmountChange = (e) => {
-        const { name, value } = e.target;
-        setAmountPaid(prev => ({...prev, [name]: value}));
-    };
-    
-    const closeTicketModal = () => {
-        setIsTicketModalOpen(false);
-        setLastSaleData(null);
-    };
+        return;
+      }
 
-    return (
-        <>
-            <div className="nota-container">
-                <div className="header-buttons"><Link to="/admin" className="header-button admin">Administrador</Link><Link to="/inventario" className="header-button inventory">Consultar Inventario</Link></div>
-                <header className="nota-header"><h1>Nota de Venta</h1></header>
-                <div className="sale-date-picker"><FiCalendar /><label htmlFor="saleDate">Fecha de la Venta:</label><input type="date" id="saleDate" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} /></div>
-                <div className="item-entry-form">
-                    <div className="form-fields-grid">
-                        <div className="form-row">
-                            <div className="input-group autocomplete-wrapper"><label>Marca</label><input ref={brandInputRef} name="brand" value={currentItem.brand} onChange={handleInputChange} onKeyDown={(e) => handleKeyDown(e, 'brand')} />{brandSuggestions.length > 0 && (<ul className="suggestions-list">{brandSuggestions.map(b => <li key={b.id} onClick={() => selectSuggestion('brand', b)}>{b.name}</li>)}</ul>)}</div>
-                            <div className="input-group autocomplete-wrapper"><label>Modelo</label><input ref={modelInputRef} name="model" value={currentItem.model} onChange={handleInputChange} onKeyDown={(e) => handleKeyDown(e, 'model')} />{modelSuggestions.length > 0 && (<ul className="suggestions-list">{modelSuggestions.map(m => <li key={m.id} onClick={() => selectSuggestion('model', m)}>{m.model}</li>)}</ul>)}</div>
-                            <div className="input-group"><label>Número</label><input ref={sizeInputRef} name="size" value={currentItem.size} onChange={handleInputChange} onKeyDown={(e) => handleKeyDown(e, 'size')} /></div>
-                        </div>
-                        <div className="form-row">
-                            <div className="input-group"><label>Color</label><input ref={colorInputRef} name="color" value={currentItem.color} onChange={handleInputChange} onKeyDown={(e) => handleKeyDown(e, 'color')} /></div>
-                            <div className="input-group"><label>SKU (Opcional)</label><input ref={skuInputRef} name="sku" value={currentItem.sku} onChange={handleInputChange} onKeyDown={(e) => handleKeyDown(e, 'sku')} /></div>
-                            <div className="input-group"><label>Precio</label><input ref={priceInputRef} name="price" type="number" value={currentItem.price} onChange={handleInputChange} onKeyDown={(e) => handleKeyDown(e, 'price')} /></div>
-                            <div className="input-group"><label>Cant.</label><input ref={quantityInputRef} name="quantity" type="number" min="1" value={currentItem.quantity} onChange={handleInputChange} onKeyDown={(e) => handleKeyDown(e, 'quantity')} /></div>
-                        </div>
-                    </div>
-                    <div className="add-button-wrapper"><button ref={addButtonRef} onClick={handleAddItem} className="add-item-button">+</button></div>
-                </div>
-                <div className="nota-items">
-                    <div className="nota-items-header"><span>Cant.</span><span>SKU</span><span>Marca</span><span>Modelo</span><span>#</span><span>Color</span><span>Categoría</span><span>Precio</span><span>Subtotal</span><span>Acción</span></div>
-                    {cart.map(item => (
-                        <div key={item.id} className={`nota-item-row ${!item.in_stock ? 'not-in-stock' : ''}`}>
-                            <span>{item.quantity}</span><span>{item.sku || '-'}</span><span>{item.brand}</span><span>{item.model}</span><span>{item.size}</span><span>{item.color}</span><span className="category-cell">{item.category}{!item.in_stock && <FiAlertCircle title="No en inventario" />}</span><span>${parseFloat(item.price || 0).toFixed(2)}</span><span>${(item.quantity * item.price).toFixed(2)}</span>
-                            <button onClick={() => handleRemoveItem(item.id)} className="remove-item-button"><FiTrash2 /></button>
-                        </div>
-                    ))}
-                </div>
-                <div className="nota-footer"><div className="total-display">Total: <strong>${cartTotal.toFixed(2)}</strong></div><button onClick={handleFinalizeClick} className="primary-button checkout-button" disabled={cart.length === 0}>Finalizar Venta</button></div>
+      const totalAmount = cart_items.reduce((sum, i) => sum + i.quantity * i.price_at_sale, 0);
+      const finalSaleTimestamp = new Date(saleDate);
+      finalSaleTimestamp.setHours(new Date().getHours(), new Date().getMinutes(), new Date().getSeconds());
+
+      // 1. Registrar cliente
+      let customerId = null;
+      if (customerPhone) {
+        customerId = await saveCustomer(customerName, customerPhone);
+      }
+
+      // 2. Registrar venta
+      const { data: saleData, error: saleError } = await supabase
+        .from('sales')
+        .insert([
+          {
+            sale_timestamp: finalSaleTimestamp.toISOString(),
+            total_amount: totalAmount,
+            notes: customerNotes,
+            customer_id: customerId,
+            is_apartado: isApartado,
+            anticipo: isApartado ? Number(anticipo) : null,
+            restante: isApartado ? Number(restante) : null,
+            apartado_expira: isApartado && expiraEl ? expiraEl.toISOString() : null,
+          }
+        ])
+        .select('id')
+        .single();
+
+      if (saleError) {
+        alert('Error al registrar la venta: ' + saleError.message);
+        setLoading(false);
+        return;
+      }
+
+      const saleId = saleData.id;
+
+      // 3. Guardar productos vendidos
+      const saleItemsToInsert = cart_items.map(item => ({
+        sale_id: saleId,
+        variant_id: item.variant_id,
+        quantity: item.quantity,
+        price_at_sale: item.price_at_sale,
+        discount: item.discount,
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('sale_items')
+        .insert(saleItemsToInsert);
+
+      if (itemsError) {
+        alert('Venta registrada, pero error al guardar productos: ' + itemsError.message);
+        setLoading(false);
+        return;
+      }
+
+      setLastSaleData({
+        id: saleId,
+        cart: cart,
+        total: totalAmount,
+        timestamp: finalSaleTimestamp.toISOString(),
+        customerPhone,
+        customerName,
+        isApartado,
+        anticipo,
+        restante,
+        expiraEl: isApartado && expiraEl ? expiraEl.toLocaleDateString('es-MX') : null,
+      });
+      setIsTicketModalOpen(true);
+      setPipOpen(false);
+      setCart([]);
+      setCustomerPhone('');
+      setCustomerName('');
+      setCustomerNotes('');
+      setAnticipo('');
+      setRestante('');
+      setProduct({ ...defaultProduct });
+      setIsApartado(false);
+      if (onSaleComplete) onSaleComplete();
+    } catch (e) {
+      alert('Error inesperado al registrar la venta.');
+    }
+    setLoading(false);
+  };
+
+  // --- PIP Pago ---
+  const openPip = () => setPipOpen(true);
+  const closePip = () => setPipOpen(false);
+
+  const computeChange = () => {
+    const efectivo = parseFloat(cashAmount) || 0;
+    const transferencia = parseFloat(transferAmount) || 0;
+    const totalPagado = efectivo + transferencia;
+    if (totalPagado > cartTotal) return `Cambio: $${(totalPagado - cartTotal).toFixed(2)}`;
+    if (totalPagado < cartTotal) return `Falta: $${(cartTotal - totalPagado).toFixed(2)}`;
+    return "Pagado completo";
+  };
+
+  return (
+    <div className="register-sale-main">
+      {/* Botones fijos arriba a la derecha */}
+      <div className="top-action-buttons">
+        <button
+          className="admin-btn"
+          onClick={() => navigate('/admin')}
+        >
+          Administrador
+        </button>
+        <button
+          className="inventory-btn"
+          onClick={() => navigate('/inventario')}
+        >
+          Buscar en Inventario
+        </button>
+      </div>
+      <header className="register-sale-header">
+        <span className="header-title">Nota de Venta</span>
+      </header>
+      <div className="register-sale-form">
+        <div className="form-row">
+          <label>Fecha de la Venta:</label>
+          <input
+            type="date"
+            value={saleDate}
+            onChange={e => setSaleDate(e.target.value)}
+            style={{ maxWidth: 170 }}
+          />
+        </div>
+        <div className="form-row">
+          <label>Nombre del cliente (opcional):</label>
+          <input
+            type="text"
+            value={customerName}
+            onChange={e => setCustomerName(e.target.value)}
+            placeholder="Nombre del cliente"
+            style={{ maxWidth: 220 }}
+          />
+        </div>
+        <div className="form-row">
+          <label>Tel. WhatsApp:</label>
+          <input
+            type="tel"
+            value={customerPhone}
+            onChange={e => setCustomerPhone(e.target.value)}
+            placeholder="10 dígitos"
+            style={{ maxWidth: 170 }}
+          />
+        </div>
+        <div className="form-row">
+          <label>Notas (opcional):</label>
+          <input
+            type="text"
+            value={customerNotes}
+            onChange={e => setCustomerNotes(e.target.value)}
+            placeholder="Notas"
+            style={{ maxWidth: 280 }}
+          />
+        </div>
+        {/* --- Apartado --- */}
+        <div className="form-row">
+          <label>
+            <input
+              type="checkbox"
+              checked={isApartado}
+              onChange={e => setIsApartado(e.target.checked)}
+              style={{ marginRight: 7 }}
+            />
+            ¿Es apartado?
+          </label>
+          {isApartado && (
+            <>
+              <span style={{marginLeft:8}}>Anticipo: </span>
+              <input
+                type="number"
+                min={0}
+                value={anticipo}
+                onChange={e => setAnticipo(e.target.value)}
+                style={{ width: 100, marginRight: 10 }}
+                placeholder="Monto"
+              />
+              <span>Resta: <b>${restante}</b></span>
+              {expiraEl && (
+                <span style={{marginLeft:16, color:'#6d28d9'}}>
+                  Expira: <b>{expiraEl.toLocaleDateString('es-MX')}</b>
+                </span>
+              )}
+            </>
+          )}
+        </div>
+        {/* --- FORMULARIO DE PRODUCTO --- */}
+        <div className="product-entry-section">
+          <h4>Agregar Producto</h4>
+          <div className="product-entry-grid">
+            <div>
+              <label>Marca:</label>
+              <input
+                list="brand-list"
+                value={product.brand}
+                onChange={e => setProduct(p => ({ ...p, brand: e.target.value }))}
+                placeholder="Escribe o selecciona"
+                autoComplete="off"
+                ref={brandRef}
+              />
+              <datalist id="brand-list">
+                {brands.map(b => (
+                  <option key={b.id} value={b.name} />
+                ))}
+              </datalist>
             </div>
-            <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title={modalStep === 'payment' ? 'Finalizar Venta' : 'Confirmar Operación'}>
-                {modalStep === 'payment' ? (<form onSubmit={handleGoToConfirmation} className="payment-modal"><div className="payment-summary"><span>Total a Pagar:</span><span className="total-amount">${cartTotal.toFixed(2)}</span></div><div className="payment-method-selector"><button type="button" onClick={() => setPaymentMethod('efectivo')} className={paymentMethod === 'efectivo' ? 'active' : ''}>Efectivo</button><button type="button" onClick={() => setPaymentMethod('transferencia')} className={paymentMethod === 'transferencia' ? 'active' : ''}>Transferencia</button><button type="button" onClick={() => setPaymentMethod('ambos')} className={paymentMethod === 'ambos' ? 'active' : ''}>Ambos</button></div><div className="payment-inputs">{(paymentMethod === 'efectivo' || paymentMethod === 'ambos') && (<div className="input-group"><label htmlFor="efectivo">Paga con (Efectivo):</label><input id="efectivo" name="efectivo" type="number" value={amountPaid.efectivo} onChange={handlePaymentAmountChange} /></div>)}{(paymentMethod === 'transferencia' || paymentMethod === 'ambos') && (<div className="input-group"><label htmlFor="transferencia">Monto (Transferencia):</label><input id="transferencia" name="transferencia" type="number" value={amountPaid.transferencia} onChange={handlePaymentAmountChange} /></div>)}</div><button type="submit" className="primary-button confirm-payment-button">Revisar Venta</button></form>) : (<div className="confirmation-modal"><h4>Resumen de la Operación</h4><div className="summary-line"><span>Total de la Venta:</span> <strong>${cartTotal.toFixed(2)}</strong></div><div className="summary-line"><span>Pagado en Efectivo:</span> <span>${parseFloat(amountPaid.efectivo || 0).toFixed(2)}</span></div><div className="summary-line"><span>Pagado por Transferencia:</span> <span>${parseFloat(amountPaid.transferencia || 0).toFixed(2)}</span></div><hr /><div className="summary-line total"><span>Total Pagado:</span> <strong>${totalPaid.toFixed(2)}</strong></div><div className="summary-line change"><span>Cambio a Devolver:</span> <strong>${changeDue.toFixed(2)}</strong></div><div className="confirmation-buttons"><button onClick={() => setModalStep('payment')} className="secondary-button">Regresar</button><button onClick={executeSale} className="primary-button" disabled={loading}>{loading ? 'Registrando...' : 'Confirmar y Registrar Venta'}</button></div></div>)}
-            </Modal>
-            <TicketModal isOpen={isTicketModalOpen} onClose={closeTicketModal} saleData={lastSaleData} />
-        </>
-    );
+            <div>
+              <label>Modelo:</label>
+              <input
+                list="model-list"
+                value={product.model}
+                onChange={e => setProduct(p => ({ ...p, model: e.target.value }))}
+                placeholder="Modelo"
+                autoComplete="off"
+                disabled={!product.brand}
+                ref={modelRef}
+              />
+              <datalist id="model-list">
+                {filteredModels.map(m => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+            </div>
+            <div>
+              <label>Color:</label>
+              <input
+                list="color-list"
+                value={product.color}
+                onChange={e => setProduct(p => ({ ...p, color: e.target.value }))}
+                placeholder="Color"
+                autoComplete="off"
+                disabled={!product.model}
+                ref={colorRef}
+              />
+              <datalist id="color-list">
+                {filteredColors.map(c => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+            </div>
+            <div>
+              <label>Talla:</label>
+              <input
+                list="size-list"
+                value={product.size}
+                onChange={e => setProduct(p => ({ ...p, size: e.target.value }))}
+                placeholder="Talla"
+                autoComplete="off"
+                disabled={!product.color}
+                ref={sizeRef}
+              />
+              <datalist id="size-list">
+                {filteredSizes.map(s => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+            </div>
+            <div>
+              <label>SKU:</label>
+              <input
+                value={product.sku}
+                readOnly
+                placeholder="Autocompletado"
+                style={{ background: "#f3f3f3" }}
+                disabled
+              />
+            </div>
+            <div>
+              <label>Precio:</label>
+              <input
+                value={product.price}
+                readOnly
+                placeholder="Autocompletado"
+                style={{ background: "#f3f3f3" }}
+                disabled
+              />
+            </div>
+            <div>
+              <label>Descuento:</label>
+              <input
+                type="number"
+                min={0}
+                value={product.discount}
+                onChange={handleDiscountChange}
+                placeholder="Descuento $"
+                disabled={!product.price}
+              />
+            </div>
+            <div>
+              <label>Precio final:</label>
+              <input
+                value={product.final_price}
+                readOnly
+                style={{ background: "#f3f3f3" }}
+                disabled
+              />
+            </div>
+            <div>
+              <label>Cantidad:</label>
+              <input
+                type="number"
+                min={1}
+                value={product.quantity}
+                onChange={e => setProduct(p => ({ ...p, quantity: e.target.value }))}
+                disabled={!product.variant_id}
+                ref={quantityRef}
+              />
+            </div>
+            <button type="button" className="add-product-btn" onClick={handleAddProduct}>
+              Agregar producto
+            </button>
+          </div>
+        </div>
+        {/* Tabla del carrito */}
+        <div className="cart-table-section">
+          <h4>Productos en la venta</h4>
+          <table className="cart-table">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Cant.</th>
+                <th>Marca</th>
+                <th>Modelo</th>
+                <th>Color</th>
+                <th>Talla</th>
+                <th>Precio</th>
+                <th>Descuento</th>
+                <th>Precio Final</th>
+                <th>Subtotal</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {cart.length === 0 ? (
+                <tr>
+                  <td colSpan={11} style={{ textAlign: 'center' }}>Sin productos añadidos</td>
+                </tr>
+              ) : (
+                cart.map((item, idx) => (
+                  <tr key={idx}>
+                    <td>{item.sku}</td>
+                    <td>{item.quantity}</td>
+                    <td>{item.brand}</td>
+                    <td>{item.model}</td>
+                    <td>{item.color}</td>
+                    <td>{item.size}</td>
+                    <td>${Number(item.price).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                    <td>${Number(item.discount).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                    <td>${Number(item.final_price).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                    <td>${(item.quantity * item.final_price).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                    <td>
+                      <button className="remove-btn" onClick={() => handleRemoveProduct(idx)}>Quitar</button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="cart-total-row">
+          <span>Total: </span>
+          <span className="cart-total-amount">${cartTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+        </div>
+        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            className="review-btn"
+            disabled={cart.length === 0}
+            onClick={openPip}
+          >
+            Revisar venta
+          </button>
+        </div>
+      </div>
+      {/* PIP de pago */}
+      {pipOpen && (
+        <div className="pip-modal-bg">
+          <div className="pip-modal">
+            <button className="close-pip" onClick={closePip}>✕</button>
+            <h3>Pago de la venta</h3>
+            <div style={{ marginBottom: 10 }}>
+              <strong>Total:</strong> ${cartTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+            </div>
+            <div className="form-row">
+              <label>Tipo de pago:</label>
+              <select
+                value={paymentType}
+                onChange={e => setPaymentType(e.target.value)}
+                style={{ maxWidth: 150 }}
+              >
+                <option value="cash">Efectivo</option>
+                <option value="transfer">Transferencia</option>
+                <option value="both">Ambos</option>
+              </select>
+            </div>
+            {(paymentType === 'cash' || paymentType === 'both') && (
+              <div className="form-row">
+                <label>Monto efectivo:</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={cashAmount}
+                  onChange={e => setCashAmount(e.target.value)}
+                />
+              </div>
+            )}
+            {(paymentType === 'transfer' || paymentType === 'both') && (
+              <div className="form-row">
+                <label>Monto transferencia:</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={transferAmount}
+                  onChange={e => setTransferAmount(e.target.value)}
+                />
+              </div>
+            )}
+            <div style={{ margin: '12px 0', fontWeight: 'bold', color: '#6d28d9' }}>
+              {computeChange()}
+            </div>
+            <button
+              className="primary-button"
+              style={{ width: '100%', marginTop: 12 }}
+              onClick={executeSale}
+              disabled={loading}
+            >
+              {loading ? 'Guardando venta...' : 'Registrar Venta'}
+            </button>
+          </div>
+        </div>
+      )}
+      {/* Ticket modal */}
+      <TicketModal
+        isOpen={isTicketModalOpen}
+        onClose={() => setIsTicketModalOpen(false)}
+        saleData={lastSaleData}
+        customerPhone={customerPhone}
+        customerName={customerName}
+        paymentType={paymentType}
+        cashAmount={cashAmount}
+        transferAmount={transferAmount}
+      />
+    </div>
+  );
 };
 
 export default RegisterSale;
